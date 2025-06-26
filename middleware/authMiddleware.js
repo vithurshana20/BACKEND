@@ -1,5 +1,14 @@
+import jwt from 'jsonwebtoken';
+import User from '../models/Player.js'; // Assuming you're using ES modules
+
+// JWT protection middleware
 export const protect = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Not authorized, token missing' });
+  }
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = await User.findById(decoded.id).select('-password');
@@ -9,6 +18,7 @@ export const protect = async (req, res, next) => {
   }
 };
 
+// Role-based access middleware
 export const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
@@ -17,3 +27,4 @@ export const authorizeRoles = (...roles) => {
     next();
   };
 };
+

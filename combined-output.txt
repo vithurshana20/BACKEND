@@ -1,0 +1,1163 @@
+
+
+// ===== controllers/authController.js =====
+
+import User from '../models/Player.js';
+import jwt from 'jsonwebtoken';
+// import crypto from "crypto";
+// import { sendEmail } from "../utils/sendEmail.js";
+
+// JWT Token generator function
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: '7d',
+  });
+};
+
+//  Register User Controller 
+// export const registerUser = async (req, res) => {
+//   try {
+//     const { name, email, phone, password, role } = req.body;
+
+//     if (!name || !email || !phone || !password) {
+//       return res.status(400).json({ message: "Name, email, phone, and password are required" });
+//     }
+
+//     const userExists = await User.findOne({ email });
+//     if (userExists) {
+//       return res.status(400).json({ message: 'User already exists' });
+//     }
+
+//     await User.create({ name, email, phone, password, role ,  trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) });
+
+//     res.status(201).json({
+//       message: "Registered successfully."
+//     });
+//   } catch (error) {
+//     console.error("Register Error:", error);
+//     res.status(500).json({ message: "Server Error" });
+//   }
+// };
+
+export const registerPlayer = async (req, res) => {
+  try {
+    const { name, email, phone, password } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: "Name, email, phone, and password are required" });
+    }
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: "Player already exists" });
+    }
+
+    const player = await User.create({
+      name,
+      email,
+      phone,
+      password,
+      role: "player",
+      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    res.status(201).json({ message: "Player registered successfully." });
+  } catch (err) {
+    console.error("Player Register Error:", err);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+
+export const registerOwner = async (req, res) => {
+  try {
+    const { name, email, phone, password } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: "Name, email, phone, and password are required" });
+    }
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: "Owner already exists" });
+    }
+
+    const owner = await User.create({
+      name,
+      email,
+      phone,
+      password,
+      role: "court_owner",
+      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    res.status(201).json({ message: "Court Owner registered successfully." });
+  } catch (err) {
+    console.error("Owner Register Error:", err);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+
+
+
+
+
+
+
+//  Login User Controller 
+export const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user || !(await user.matchPassword(password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      message: "Login successful",
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error("Login Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+//  Get current logged-in user
+export const getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error("Get Current User Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+//  Get all users (Admin only)
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.json(users);
+  } catch (error) {
+    console.error("Get All Users Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+//  Update a user by ID (Admin only)
+export const updateUser = async (req, res) => {
+  try {
+    const { name, email, phone, role } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { name, email, phone, role },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "User updated successfully",
+      user
+    });
+  } catch (error) {
+    console.error("Update User Error:", error);
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+//  Delete a user by ID (Admin only)
+export const deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error("Delete User Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// Logout user (clear refresh token or session)
+export const logoutUser = async (req, res) => {
+  try {
+    // If refresh token stored in cookies:
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    res.status(200).json({ message: 'Successfully logged out' });
+  } catch (err) {
+    res.status(500).json({ message: 'Logout failed', error: err.message });
+  }
+};
+
+
+
+// ===== controllers/bookingController.js =====
+
+import Booking from "../models/Booking.js";
+import Court from "../models/Court.js";
+
+// Get available/booked slots for a specific date
+export const getSlots = async (req, res) => {
+  const { courtId, date } = req.query;
+  try {
+    const court = await Court.findById(courtId);
+    if (!court) return res.status(404).json({ message: "Court not found" });
+
+    // Initialize slots if not already set for that date
+    if (!court.availableTimes.has(date)) {
+      const slots = [];
+      for (let h = 6; h < 22; h++) {
+        slots.push({
+          start: `${h.toString().padStart(2, '0')}:00`,
+          end: `${(h + 1).toString().padStart(2, '0')}:00`,
+          status: "available"
+        });
+      }
+      court.availableTimes.set(date, slots);
+      court.markModified("availableTimes");
+      await court.save();
+    }
+
+    const slots = court.availableTimes.get(date);
+    res.status(200).json({ date, slots });
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching slots", error: err.message });
+  }
+};
+
+// Book a slot (only if available)
+export const bookSlot = async (req, res) => {
+  const { courtId, date, start, end } = req.body;
+  try {
+    const court = await Court.findById(courtId);
+    if (!court) return res.status(404).json({ message: "Court not found" });
+
+    // **Check if court is approved**
+    if (!court.approved) {  // or court.status !== 'approved'
+      return res.status(403).json({ message: "Booking is not allowed for unapproved courts." });
+    }
+
+    const slots = court.availableTimes.get(date);
+
+    if (!slots) {
+      const newSlots = generateTimeSlots();
+      court.availableTimes.set(date, newSlots);
+      court.markModified("availableTimes");
+      await court.save();
+    }
+
+    const currentSlots = court.availableTimes.get(date);
+    const slot = currentSlots.find(s => s.start === start && s.end === end);
+
+    if (!slot || slot.status !== "available") {
+      return res.status(400).json({ message: "This time slot is already booked or unavailable." });
+    }
+
+    // Mark slot as booked
+    slot.status = "booked";
+    court.markModified("availableTimes");
+    await court.save();
+
+    // Create booking
+    const booking = new Booking({
+      player: req.user._id,
+      court: courtId,
+      bookingDate: date,
+      start,
+      end,
+      status: "booked"
+    });
+
+    await booking.save();
+    res.status(201).json({ message: "Slot booked successfully", booking });
+
+  } catch (err) {
+    res.status(500).json({ message: "Booking failed", error: err.message });
+  }
+};
+
+
+// Cancel a booking
+export const cancelBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    // Only the player who booked can cancel
+    if (booking.player.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized to cancel this booking" });
+    }
+
+    // Check if cancellation is within 30 minutes
+    const now = new Date();
+    const diffMinutes = (now - new Date(booking.createdAt)) / (1000 * 60);
+    if (diffMinutes > 30) {
+      return res.status(400).json({ message: "Cancellation time expired (30 mins passed)" });
+    }
+
+    // Update booking status
+    booking.status = "cancelled";
+    await booking.save();
+
+    // Revert court slot to "available"
+    const court = await Court.findById(booking.court);
+    const slots = court.availableTimes.get(booking.bookingDate);
+    const slot = slots.find(s => s.start === booking.start && s.end === booking.end);
+    if (slot) {
+      slot.status = "available";
+      court.markModified("availableTimes");
+      await court.save();
+    }
+
+    res.status(200).json({ message: "Booking cancelled successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error cancelling booking", error: err.message });
+  }
+};
+
+// Get my bookings (for player)
+export const getMyBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ player: req.user._id }).populate("court");
+    res.status(200).json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching bookings" });
+  }
+};
+
+// Get all bookings (admin or owner)
+export const getCourtBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find()
+      .populate("player", "name email")
+      .populate("court", "name location");
+    res.status(200).json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching court bookings" });
+  }
+};
+
+
+// ===== controllers/courtController.js =====
+
+import Court from "../models/Court.js";
+
+// 🔁 Helper: Generate time slots for next N days (default 30)
+const generateSlotsForDate = () => {
+  const slots = [];
+  for (let hour = 9; hour < 22; hour++) {
+    slots.push({
+      start: `${hour}:00`,
+      end: `${hour + 1}:00`,
+      status: "available"
+    });
+  }
+  return slots;
+};
+
+const generateAvailableTimes = (days = 30) => {
+  const map = {};
+  const today = new Date();
+  for (let i = 0; i < days; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const dateString = date.toISOString().split("T")[0];
+    map[dateString] = generateSlotsForDate();
+  }
+  return map;
+};
+
+//  Add a court (Court Owner only)
+export const addCourt = async (req, res) => {
+  const { name, location, pricePerHour, contact } = req.body;
+
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const images = req.files.map((file) => file.path); // Cloudinary URLs
+
+    if (!name || !location || !pricePerHour || !contact?.phone || !contact?.mapLink || !images || images.length === 0) {
+      return res.status(400).json({
+        message:
+          "Name, location, price per hour, contact phone, map link and at least one image are required",
+      });
+    }
+
+    const court = new Court({
+      name,
+      location,
+      pricePerHour,
+      images,
+      owner: req.user._id,
+      contact: {
+        phone: contact.phone,
+        mapLink: contact.mapLink,
+      },
+      availableTimes: generateAvailableTimes(), // ⏱️ Pre-fill 30 days 9AM-10PM
+      isApproved: false,
+    });
+
+    await court.save();
+    res.status(201).json({ message: "Court submitted for approval", court });
+  } catch (err) {
+    res.status(500).json({ message: "Error adding court", error: err.message });
+  }
+};
+
+//  Get all approved courts (Player & Admin view)
+export const getAllCourts = async (req, res) => {
+  try {
+    const courts = await Court.find({ isApproved: true });
+    res.status(200).json(courts);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching courts", error: err.message });
+  }
+};
+
+//  Get courts owned by the logged-in court owner
+export const getMyCourts = async (req, res) => {
+  try {
+    const courts = await Court.find({ owner: req.user._id });
+    res.status(200).json(courts);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching your courts", error: err.message });
+  }
+};
+
+// Add available time slot (date-based)
+export const addAvailableTime = async (req, res) => {
+  const { courtId, date, start, end } = req.body;
+
+  try {
+    const court = await Court.findById(courtId);
+    if (!court) return res.status(404).json({ message: "Court not found" });
+
+    const newSlot = { start, end, status: "available" };
+
+    const currentSlots = court.availableTimes.get(date) || [];
+    currentSlots.push(newSlot);
+    court.availableTimes.set(date, currentSlots);
+
+    court.markModified("availableTimes");
+    await court.save();
+
+    res.status(200).json({ message: "Available time added", court });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to add time", error: error.message });
+  }
+};
+
+//  Upload court image
+export const uploadCourtImage = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No image uploaded" });
+
+    const imagePath = req.file.path;
+    res.status(200).json({ message: "Image uploaded", imageUrl: imagePath });
+  } catch (err) {
+    res.status(500).json({ message: "Upload failed", error: err.message });
+  }
+};
+
+//  Admin: Get all courts (including pending approval)
+export const getAllCourtsForApproval = async (req, res) => {
+  try {
+    const courts = await Court.find().populate('owner', 'name email');
+    res.status(200).json(courts);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching courts', error: err.message });
+  }
+};
+
+// Admin: Approve a court
+export const approveCourt = async (req, res) => {
+  try {
+    const court = await Court.findById(req.params.id);
+    if (!court) return res.status(404).json({ message: 'Court not found' });
+
+    court.isApproved = true;
+    await court.save();
+
+    res.status(200).json({ message: 'Court approved successfully', court });
+  } catch (err) {
+    res.status(500).json({ message: 'Error approving court', error: err.message });
+  }
+};
+
+//  Admin: Reject a court
+export const rejectCourt = async (req, res) => {
+  try {
+    const court = await Court.findById(req.params.id);
+    if (!court) return res.status(404).json({ message: 'Court not found' });
+
+    court.isApproved = false;
+    await court.save();
+
+    res.status(200).json({ message: 'Court rejected', court });
+  } catch (err) {
+    res.status(500).json({ message: 'Error rejecting court', error: err.message });
+  }
+};
+
+
+// ===== controllers/userController.js =====
+
+import User from '../models/Player.js';
+
+export const checkSubscriptionStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    const now = new Date();
+    const trialStart = new Date(user.createdAt);
+    const trialEnd = new Date(trialStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    let isInTrial = now < trialEnd;
+    let isSubscribed = user.isSubscribed || false;
+
+    if (!isSubscribed && !isInTrial) {
+      return res.status(403).json({ 
+        message: "Trial expired. Please subscribe to continue.",
+        trialEnded: true,
+        subscription: false 
+      });
+    }
+
+    res.json({
+      message: "Access allowed",
+      trialEndsAt: trialEnd,
+      isInTrial,
+      isSubscribed
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+};
+export const subscribeUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.isSubscribed = true;
+    user.subscriptionStartedAt = new Date();
+    user.subscriptionEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    await user.save({ validateBeforeSave: false }); // 🔑 This line disables full validation
+
+    res.json({ message: "Subscription activated", user });
+  } catch (error) {
+    res.status(500).json({ message: "Subscription failed", error: error.message });
+  }
+};
+
+
+// ===== models/Booking.js =====
+
+import mongoose from "mongoose";
+
+const bookingSchema = new mongoose.Schema({
+  player:      { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  court:       { type: mongoose.Schema.Types.ObjectId, ref: "Court", required: true },
+  bookingDate: { type: String, required: true }, // "2025-06-12"
+  start:       { type: String, required: true },
+  end:         { type: String, required: true },
+  status:      { type: String, enum: ["booked","cancelled"], default: "booked" }
+}, { timestamps: true });
+
+export default mongoose.model("Booking", bookingSchema);
+
+
+
+// ===== models/Court.js =====
+
+import mongoose from "mongoose";
+
+// Slot schema — reused in Map for each date
+const timeSlotSchema = new mongoose.Schema({
+  start: { type: String, required: true },     // Example: "09:00"
+  end:   { type: String, required: true },     // Example: "10:00"
+  status:{ type: String, enum: ["available", "booked"], default: "available" }
+}, { _id: false });
+
+// Main Court schema
+const courtSchema = new mongoose.Schema({
+  name:         { type: String, required: true },
+  location:     { type: String, required: true },
+  images:       [{ type: String, required: true }], // Cloudinary URLs or local
+
+  pricePerHour: { type: Number, required: true },
+
+  // Approval system (for admin dashboard)
+  isApproved:   { type: Boolean, default: false },
+
+  // Court owner reference
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true
+  },
+
+  // Contact details (required for court listing)
+  contact: {
+    phone:   { type: String, required: true },
+    mapLink: { type: String, required: true }
+  },
+
+  // Dynamic availability: Map of "yyyy-mm-dd" → timeSlot[]
+  availableTimes: {
+    type: Map,
+    of: [timeSlotSchema],
+    default: {}
+  }
+
+}, { timestamps: true });
+
+export default mongoose.model("Court", courtSchema);
+
+
+// ===== models/Owner.js =====
+
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+
+// Step 1: Schema definition
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  phone: { type: String, required: true, trim: true }, // 📞 Phone number
+  password: { type: String, required: true, minlength: 6 },
+
+  role: {
+    type: String,
+    enum: ['player', 'court_owner', 'admin'],
+    default: 'court_owner'
+  },
+trialEndsAt: {
+  type: Date,
+  default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+},
+isSubscribed: {
+  type: Boolean,
+  default: false
+},
+subscriptionStartedAt: Date,
+subscriptionEndsAt: Date
+
+  // 👇 New fields for trial/subscription
+  // subscribed: {
+  //   type: Boolean,
+  //   default: false // After 7 days, this should be true to allow full access
+  // },
+
+  // registeredAt: {
+  //   type: Date,
+  //   default: Date.now // Used to calculate 7-day trial
+  // }
+
+}, {
+  timestamps: true
+});
+
+// ✅ Step 2: Hash password before saving
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+
+  if (!this.password) {
+    return next(new Error('Password is required to hash'));
+  }
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ✅ Step 3: Add methods (e.g., password match)
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// ✅ Step 4: Export model
+const User = mongoose.model('User', userSchema);
+export default User;
+
+// import crypto from "crypto";
+
+// userSchema.methods.generateResetToken = function () {
+//   const resetToken = crypto.randomBytes(20).toString("hex");
+//   this.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+//   this.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 mins
+//   return resetToken;
+// };
+
+// ===== models/Player.js =====
+
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+
+// Step 1: Schema definition
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  phone: { type: String, required: true, trim: true }, // 📞 Phone number
+  password: { type: String, required: true, minlength: 6 },
+
+  role: {
+    type: String,
+    enum: ['player', 'court_owner', 'admin'],
+    default: 'player'
+  },
+trialEndsAt: {
+  type: Date,
+  default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+},
+isSubscribed: {
+  type: Boolean,
+  default: false
+},
+subscriptionStartedAt: Date,
+subscriptionEndsAt: Date
+
+  // 👇 New fields for trial/subscription
+  // subscribed: {
+  //   type: Boolean,
+  //   default: false // After 7 days, this should be true to allow full access
+  // },
+
+  // registeredAt: {
+  //   type: Date,
+  //   default: Date.now // Used to calculate 7-day trial
+  // }
+
+}, {
+  timestamps: true
+});
+
+// ✅ Step 2: Hash password before saving
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+
+  if (!this.password) {
+    return next(new Error('Password is required to hash'));
+  }
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ✅ Step 3: Add methods (e.g., password match)
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// ✅ Step 4: Export model
+const User = mongoose.model('User', userSchema);
+export default User;
+
+// import crypto from "crypto";
+
+// userSchema.methods.generateResetToken = function () {
+//   const resetToken = crypto.randomBytes(20).toString("hex");
+//   this.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+//   this.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 mins
+//   return resetToken;
+// };
+
+// ===== routes/adminRoutes.js =====
+
+// import express from 'express';
+
+// const router = express.Router();
+
+// router.get('/dashboard', (req, res) => {
+//   res.send('Admin dashboard');
+// });
+
+// export default router;
+import express from 'express';
+import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
+import { 
+  getAllUsers, 
+  updateUser, 
+  deleteUser 
+} from '../controllers/authController.js';
+
+import {
+  getAllCourtsForApproval,
+  approveCourt,
+  rejectCourt
+} from '../controllers/courtController.js';
+
+const router = express.Router();
+
+// ✅ User Management (Admin only)
+router.get('/users', protect, authorizeRoles('admin'), getAllUsers);
+router.put('/users/:id', protect, authorizeRoles('admin'), updateUser);
+router.delete('/users/:id', protect, authorizeRoles('admin'), deleteUser);
+
+// ✅ Court Approval Routes (Admin only)
+router.get('/courts', protect, authorizeRoles('admin'), getAllCourtsForApproval);
+router.put('/courts/approve/:id', protect, authorizeRoles('admin'), approveCourt);
+router.put('/courts/reject/:id/', protect, authorizeRoles('admin'), rejectCourt);
+
+export default router;
+
+
+
+// ===== routes/authRoutes.js =====
+
+import express from 'express';
+import passport from "passport";
+import {
+  registerPlayer,
+  registerOwner,
+  loginUser,
+  logoutUser
+} from '../controllers/authController.js';
+import { protect } from '../middleware/authMiddleware.js';
+
+const router = express.Router();
+
+// ✅ Player Registration
+router.post('/register/player', registerPlayer);
+
+// ✅ Owner Registration
+router.post('/register/owner', registerOwner);
+
+// ✅ Login
+router.post('/login', loginUser);
+
+// ✅ Logout (Requires authentication)
+router.post('/logout', protect, logoutUser);
+
+// ✅ Profile Route (for testing, optional)
+router.get('/profile', protect, (req, res) => {
+  res.send('User profile route');
+});
+
+// ✅ Google Login (social login)
+router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+
+// ✅ Google Login Callback
+router.get(
+  "/google/callback",
+  passport.authenticate("google", {
+    failureRedirect: "/login",
+    session: false,
+  }),
+  (req, res) => {
+    // 🔐 Create JWT token here (based on req.user)
+    const token = "dummy-jwt-token"; // TODO: Replace with real generated token
+    res.redirect(`${process.env.FRONTEND_URL}/social-success?token=${token}`);
+  }
+);
+
+export default router;
+
+
+// ===== routes/bookingRoutes.js =====
+
+import express from "express";
+import {
+  bookSlot, // ✅ use this instead of bookCourt
+  getMyBookings,
+  getCourtBookings,
+  cancelBooking,
+  getSlots, // optional: for frontend slot view
+} from "../controllers/bookingController.js";
+import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
+import { checkSubscription } from "../middleware/checkSubscription.js";
+const router = express.Router();
+
+// Get available slots for a specific date
+router.get("/slots", protect, getSlots); // Example: /api/bookings/slots?courtId=xxx&date=yyyy-mm-dd
+
+// Book a slot
+router.post("/book", protect, authorizeRoles("player"), checkSubscription, bookSlot);
+
+// Get current user's bookings
+router.get("/my-bookings", protect, authorizeRoles("player"), getMyBookings);
+
+// Get all bookings for courts (court owner/admin)
+router.get("/court-bookings", protect, authorizeRoles("court_owner", "admin"), getCourtBookings);
+
+// Cancel booking (within 30 min)
+router.put("/:id/cancel", protect, authorizeRoles("player"), cancelBooking);
+
+export default router;
+
+
+// ===== routes/courtRoutes.js =====
+
+import express from "express";
+import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
+import upload from "../middleware/uploadMiddleware.js";
+ // Make sure multer config is correct
+import {
+  addCourt,
+  getAllCourts,
+  getMyCourts,
+  addAvailableTime,
+  uploadCourtImage,
+  getAllCourtsForApproval,
+  approveCourt,
+  rejectCourt,
+} from "../controllers/courtController.js";
+import { checkSubscription } from "../middleware/checkSubscription.js";
+
+const router = express.Router();
+
+router.post(
+  "/add",
+  protect,
+  authorizeRoles("court_owner"),
+checkSubscription,
+  upload.array("images", 5),
+  addCourt
+);
+
+
+router.get("/", getAllCourts);
+
+router.get(
+  "/my-courts",
+  protect,
+  authorizeRoles("court_owner"),
+  getMyCourts
+);
+
+
+router.post(
+  "/add-available-time",
+  protect,
+  authorizeRoles("court_owner"),
+  addAvailableTime
+);
+
+
+router.post(
+  "/upload-image",
+  protect,
+  authorizeRoles("court_owner"),
+  upload.single("image"),
+  uploadCourtImage
+);
+
+
+// Get all courts for approval
+router.get(
+  "/admin/all",
+  protect,
+  authorizeRoles("admin"),
+  getAllCourtsForApproval
+);
+
+// Approve a court
+router.put(
+  "/admin/approve/:id",
+  protect,
+  authorizeRoles("admin"),
+  approveCourt
+);
+
+// Reject a court
+router.put(
+  "/admin/reject/:id",
+  protect,
+  authorizeRoles("admin"),
+  rejectCourt
+);
+
+export default router;
+
+
+// ===== routes/userRoutes.js =====
+
+// import express from 'express';
+// import { protect } from '../middleware/authMiddleware.js';
+// // import { checkSubscriptionStatus } from '../controllers/userController.js';
+
+// const router = express.Router();
+
+// router.get('/subscription-status', protect);
+
+// export default router;
+import express from 'express';
+import { protect } from '../middleware/authMiddleware.js';
+import { checkSubscription } from '../middleware/checkSubscription.js';
+import { subscribeUser } from "../controllers/userController.js";
+
+const router = express.Router();
+
+
+router.post("/subscribe", protect, subscribeUser); // 👈 Subscription route
+router.get('/check-subscription', protect, checkSubscription, (req, res) => {
+  res.json({ message: 'Access granted. You have a valid subscription or trial.' });
+});
+
+export default router;
+
+
+// ===== config/db.js =====
+
+import mongoose from 'mongoose';
+
+const connectDB =async () => {
+    try {
+        await mongoose.connect(process.env.mongodb_URI);   
+            console.log('MongoDB connected');
+        }catch (error) {
+            console.error('MongoDB connection error:', error);
+            process.exit(1);
+        };
+    }
+export default connectDB;
+
+// ===== config/passport.js =====
+
+// config/passport.js
+import passport from "passport";
+import GoogleStrategy from "passport-google-oauth20";
+import User from "../models/Player.js";
+
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+passport.deserializeUser(async (id, done) => {
+  const user = await User.findById(id);
+  done(null, user);
+});
+
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: "/api/auth/google/callback"
+}, async (accessToken, refreshToken, profile, done) => {
+  const existingUser = await User.findOne({ email: profile.emails[0].value });
+  if (existingUser) return done(null, existingUser);
+
+  const newUser = await User.create({
+    name: profile.displayName,
+    email: profile.emails[0].value,
+    password: "google", // Dummy password
+    role: "player",
+    trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  });
+  done(null, newUser);
+}));
+
+
+// ===== server.js =====
+
+import dotenv from 'dotenv';
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+
+
+
+import connectDB from './config/db.js';
+import authRoutes from './routes/authRoutes.js';
+import courtRoutes from './routes/courtRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import session from "express-session";
+import passport from "passport";
+import "./config/passport.js";
+// import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import userRoutes from './routes/userRoutes.js';
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(express.json());
+app.use(cors());
+app.use("/uploads", express.static("uploads"));
+
+app.use(cors({
+  origin:"http://localhost:5173",
+  credentials: true, }));
+ 
+
+app.use(session({
+  secret: "secret123",
+  resave: false,
+  saveUninitialized: false
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/courts', courtRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/admin', adminRoutes);
+// app.use('/api/subscribe', subscriptionRoutes);
+app.use('/api/users', userRoutes);
+
+
+app.get('/', (req, res) => {
+  res.send('Backend server is running!');
+});
+
+// Connect to DB and start server
+const startServer = async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error('Server failed to start:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+export default app;
