@@ -16,6 +16,41 @@ const generateTimeSlots = () => {
 };
 
 // ✅ Get available/booked slots from today for next 7 days
+// export const getSlots = async (req, res) => {
+//   const { courtId } = req.query;
+
+//   if (!courtId) {
+//     return res.status(400).json({ message: "courtId is required" });
+//   }
+
+//   try {
+//     const court = await Court.findById(courtId);
+//     if (!court) return res.status(404).json({ message: "Court not found" });
+
+//     const today = new Date();
+//     const slotsByDate = {};
+
+//     for (let i = 0; i < 7; i++) {
+//       const dateStr = format(addDays(today, i), "yyyy-MM-dd");
+
+//       if (!court.availableTimes.has(dateStr)) {
+//         const slots = generateTimeSlots();
+//         court.availableTimes.set(dateStr, slots);
+//       }
+
+//       slotsByDate[dateStr] = court.availableTimes.get(dateStr);
+//     }
+
+//     court.markModified("availableTimes");
+//     await court.save();
+
+//     res.status(200).json({ slotsByDate });
+//   } catch (err) {
+//     res.status(500).json({ message: "Error fetching slots", error: err.message });
+//   }
+// };
+
+// bookingController.js
 export const getSlots = async (req, res) => {
   const { courtId } = req.query;
 
@@ -26,6 +61,11 @@ export const getSlots = async (req, res) => {
   try {
     const court = await Court.findById(courtId);
     if (!court) return res.status(404).json({ message: "Court not found" });
+
+    // Ensure availableTimes is a Map
+    if (!(court.availableTimes instanceof Map)) {
+      court.availableTimes = new Map(Object.entries(court.availableTimes || {}));
+    }
 
     const today = new Date();
     const slotsByDate = {};
@@ -38,18 +78,16 @@ export const getSlots = async (req, res) => {
         court.availableTimes.set(dateStr, slots);
       }
 
-      slotsByDate[dateStr] = court.availableTimes.get(dateStr);
+      // Always return all slots, including blocked
+      slotsByDate[dateStr] = court.availableTimes.get(dateStr) || [];
     }
 
-    court.markModified("availableTimes");
     await court.save();
-
     res.status(200).json({ slotsByDate });
   } catch (err) {
     res.status(500).json({ message: "Error fetching slots", error: err.message });
   }
 };
-
 // ✅ Book a slot (only if available)
 export const bookSlot = async (req, res) => {
   const { courtId, bookingDate, start, end } = req.body;
@@ -75,8 +113,11 @@ export const bookSlot = async (req, res) => {
     }
 
     const slot = slots.find((s) => s.start === start && s.end === end);
-    if (!slot || slot.status !== "available") {
-      return res.status(400).json({ message: "This time slot is already booked or unavailable." });
+    if (!slot) {
+      return res.status(400).json({ message: "This time slot does not exist." });
+    }
+    if (slot.status !== "available") {
+      return res.status(400).json({ message: `This time slot is already ${slot.status}.` });
     }
 
     // Book slot
@@ -154,5 +195,45 @@ export const getCourtBookings = async (req, res) => {
     res.status(200).json(bookings);
   } catch (err) {
     res.status(500).json({ message: "Error fetching court bookings" });
+  }
+};
+export const blockTimeSlot = async (req, res) => {
+  const { date, start, end } = req.body;
+
+  if (!date || !start || !end) {
+    return res.status(400).json({ message: "date, start, and end are required" });
+  }
+
+  try {
+    // Only block slots for courts owned by the logged-in user
+    const courts = await Court.find({ owner: req.user._id });
+
+    if (!courts.length) {
+      return res.status(404).json({ message: "No courts found for this owner" });
+    }
+
+    let blockedCount = 0;
+    for (const court of courts) {
+      let slots = court.availableTimes.get(date);
+      if (!slots) {
+        slots = generateTimeSlots();
+        court.availableTimes.set(date, slots);
+      }
+      const slot = slots.find((s) => s.start === start && s.end === end);
+      if (slot && slot.status !== "blocked") {
+        slot.status = "blocked";
+        court.markModified("availableTimes");
+        await court.save();
+        blockedCount++;
+      }
+    }
+
+    if (blockedCount === 0) {
+      return res.status(404).json({ message: "Time slot not found or already blocked in all your courts" });
+    }
+
+    res.status(200).json({ message: `${blockedCount} time slot(s) blocked successfully` });
+  } catch (err) {
+    res.status(500).json({ message: "Error blocking time slot", error: err.message });
   }
 };

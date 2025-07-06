@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 const timeSlotSchema = new mongoose.Schema({
   start: { type: String, required: true },     // Example: "09:00"
   end:   { type: String, required: true },     // Example: "10:00"
-  status:{ type: String, enum: ["available", "booked"], default: "available" }
+  status:{ type: String, enum: ["available", "booked", "blocked"], default: "available" }
 }, { _id: false });
 
 // Main Court schema
@@ -24,6 +24,7 @@ const courtSchema = new mongoose.Schema({
     ref: "User",
     required: true
   },
+  
 
   // Contact details (required for court listing)
   contact: {
@@ -36,7 +37,24 @@ const courtSchema = new mongoose.Schema({
     type: Map,
     of: [timeSlotSchema],
     default: {}
-  }
+  },
+blockedTimes: {
+  type: Map,
+  of: [
+    {
+      start: String,
+      end: String,
+      reason: String, // optional
+      blockedByOwner: { type: Boolean, default: true },
+    }
+  ],
+  default: new Map(),
+},
+
+
+  active: { type: Boolean, default: false }, // Only active after payment
+  subscriptionId: String, // Stripe subscription ID
+  subscriptionEnd: Date   // Monthly expiry
 
 }, { timestamps: true });
 

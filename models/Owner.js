@@ -17,12 +17,12 @@ trialEndsAt: {
   type: Date,
   default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
 },
-isSubscribed: {
-  type: Boolean,
-  default: false
-},
-subscriptionStartedAt: Date,
-subscriptionEndsAt: Date
+  stripeCustomerId: { type: String }, // ✅ Needed for Stripe
+
+// isSubscribed: { type: Boolean, default: false },
+// subscriptionStart: { type: Date },
+// subscriptionEnd: { type: Date }
+
 
   // 👇 New fields for trial/subscription
   // subscribed: {
@@ -39,7 +39,7 @@ subscriptionEndsAt: Date
   timestamps: true
 });
 
-// ✅ Step 2: Hash password before saving
+//  Step 2: Hash password before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
 
@@ -62,14 +62,6 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 };
 
 // ✅ Step 4: Export model
-const User = mongoose.model('User', userSchema);
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 export default User;
 
-// import crypto from "crypto";
-
-// userSchema.methods.generateResetToken = function () {
-//   const resetToken = crypto.randomBytes(20).toString("hex");
-//   this.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
-//   this.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 mins
-//   return resetToken;
-// };

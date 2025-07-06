@@ -3,7 +3,7 @@ import Court from "../models/Court.js";
 // 🔁 Helper: Generate time slots for next N days (default 30)
 const generateSlotsForDate = () => {
   const slots = [];
-  for (let hour = 9; hour < 22; hour++) {
+  for (let hour = 6; hour < 22; hour++) {
     slots.push({
       start: `${hour}:00`,
       end: `${hour + 1}:00`,
@@ -26,15 +26,20 @@ const generateAvailableTimes = (days = 30) => {
 };
 
 //  Add a court (Court Owner only)
-export const addCourt = async (req, res) => {
-  const { name, location, pricePerHour, contact } = req.body;
 
+export const addCourt = async (req, res) => {
+  let { name, location, pricePerHour, contact } = req.body;
   try {
+    // Parse contact if it's a string (from multipart/form-data)
+    if (typeof contact === "string") {
+      contact = JSON.parse(contact);
+    }
+
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
-    const images = req.files.map((file) => file.path); // Cloudinary URLs
+    const images = req.files?.map((file) => file.path) || [];
 
-    if (!name || !location || !pricePerHour || !contact?.phone || !contact?.mapLink || !images || images.length === 0) {
+    if (!name || !location || !pricePerHour || !contact?.phone || !contact?.mapLink || images.length === 0) {
       return res.status(400).json({
         message:
           "Name, location, price per hour, contact phone, map link and at least one image are required",
@@ -51,7 +56,7 @@ export const addCourt = async (req, res) => {
         phone: contact.phone,
         mapLink: contact.mapLink,
       },
-      availableTimes: generateAvailableTimes(), // ⏱️ Pre-fill 30 days 9AM-10PM
+      availableTimes: generateAvailableTimes(), // ⏱ Pre-fill 30 days 9AM-10PM
       isApproved: false,
     });
 
@@ -141,6 +146,9 @@ export const approveCourt = async (req, res) => {
     res.status(500).json({ message: 'Error approving court', error: err.message });
   }
 };
+
+
+
 
 //  Admin: Reject a court
 export const rejectCourt = async (req, res) => {

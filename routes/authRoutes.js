@@ -4,7 +4,8 @@ import {
   registerPlayer,
   registerOwner,
   loginUser,
-  logoutUser
+  logoutUser,
+  getCurrentUser // ✅ Add this
 } from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
@@ -19,28 +20,27 @@ router.post('/register/owner', registerOwner);
 // ✅ Login
 router.post('/login', loginUser);
 
-// ✅ Logout (Requires authentication)
+// ✅ Logout
 router.post('/logout', protect, logoutUser);
 
-// ✅ Profile Route (for testing, optional)
-router.get('/profile', protect, (req, res) => {
-  res.send('User profile route');
-});
+// ✅ Profile Route (used by PlayerDashboard)
+router.get('/profile', protect, getCurrentUser);
 
 // ✅ Google Login (social login)
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
 // ✅ Google Login Callback
-router.get(
-  "/google/callback",
-  passport.authenticate("google", {
-    failureRedirect: "/login",
-    session: false,
+// 2. Callback URL from Google
+router.get('/google/callback', 
+  passport.authenticate('google', {
+    failureRedirect: 'http://localhost:5173/login', // frontend login page
+    session: true,
   }),
   (req, res) => {
-    // 🔐 Create JWT token here (based on req.user)
-    const token = "dummy-jwt-token"; // TODO: Replace with real generated token
-    res.redirect(`${process.env.FRONTEND_URL}/social-success?token=${token}`);
+    // After successful auth
+    const user = req.user;
+    const token = user.generateToken(); // Assuming you have a method to generate JWT
+    res.redirect(`http://localhost:5173/oauth-success?token=${token}`);
   }
 );
 

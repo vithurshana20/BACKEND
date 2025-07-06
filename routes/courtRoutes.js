@@ -11,8 +11,9 @@ import {
   getAllCourtsForApproval,
   approveCourt,
   rejectCourt,
+ 
 } from "../controllers/courtController.js";
-import { checkSubscription } from "../middleware/checkSubscription.js";
+// import { checkSubscription } from "../middleware/checkSubscription.js";
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.post(
   "/add",
   protect,
   authorizeRoles("court_owner"),
-checkSubscription,
+// checkSubscription,
   upload.array("images", 5),
   addCourt
 );
@@ -76,5 +77,7 @@ router.put(
   authorizeRoles("admin"),
   rejectCourt
 );
+
+
 
 export default router;

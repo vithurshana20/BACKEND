@@ -62,14 +62,7 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 };
 
 // ✅ Step 4: Export model
-const User = mongoose.model('User', userSchema);
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 export default User;
 
-// import crypto from "crypto";
 
-// userSchema.methods.generateResetToken = function () {
-//   const resetToken = crypto.randomBytes(20).toString("hex");
-//   this.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
-//   this.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 mins
-//   return resetToken;
-// };
