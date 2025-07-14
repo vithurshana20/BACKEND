@@ -16,10 +16,17 @@ import bookingRoutes from './routes/bookingRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 // import userRoutes from './routes/userRoutes.js';
 // import paymentRoutes from "./routes/paymentRoutes.js";
+import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import webhookRoutes from './routes/webhook.js'; // 🔁 
+import bodyParser from 'body-parser';
+
 import './config/passport.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ⚠️ Stripe Webhook - raw parser (must come BEFORE express.json)
+app.use("/api/webhook", bodyParser.raw({ type: "application/json" }));
 
 //  Basic Middlewares
 app.use(express.json());
@@ -47,6 +54,9 @@ app.use('/api/admin', adminRoutes);
 // app.use('/api/users', userRoutes);
 // app.use("/api/payments", paymentRoutes);
 // app.use("/api/webhook", webhookRoutes);
+app.use('/api/subscribe', subscriptionRoutes); // ✅ Stripe subscription endpoint
+app.use('/api/webhook', webhookRoutes);  
+
 
 //  Basic Health Check
 app.get('/', (req, res) => {

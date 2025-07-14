@@ -1,4 +1,6 @@
 import Court from "../models/Court.js";
+import { sendEmail } from "../utils/sendEmail.js";
+
 
 // 🔁 Helper: Generate time slots for next N days (default 30)
 const generateSlotsForDate = () => {
@@ -133,21 +135,42 @@ export const getAllCourtsForApproval = async (req, res) => {
 };
 
 // Admin: Approve a court
+// export const approveCourt = async (req, res) => {
+//   try {
+//     const court = await Court.findById(req.params.id);
+//     if (!court) return res.status(404).json({ message: 'Court not found' });
+
+//     court.isApproved = true;
+//     await court.save();
+
+//     res.status(200).json({ message: 'Court approved successfully', court });
+//   } catch (err) {
+//     res.status(500).json({ message: 'Error approving court', error: err.message });
+//   }
+// };
+
 export const approveCourt = async (req, res) => {
   try {
-    const court = await Court.findById(req.params.id);
+    const court = await Court.findById(req.params.id).populate('owner', 'email name');
     if (!court) return res.status(404).json({ message: 'Court not found' });
 
     court.isApproved = true;
     await court.save();
+
+    // Send email to owner
+    if (court.owner && court.owner.email) {
+      await sendEmail({
+        to: court.owner.email,
+        subject: "Your Court Has Been Approved!",
+        text: `Hello ${court.owner.name},\n\nYour court "${court.name}" has been approved and is now live on the platform.\n\nThank you!`
+      });
+    }
 
     res.status(200).json({ message: 'Court approved successfully', court });
   } catch (err) {
     res.status(500).json({ message: 'Error approving court', error: err.message });
   }
 };
-
-
 
 
 //  Admin: Reject a court

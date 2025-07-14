@@ -1,6 +1,6 @@
 import Booking from "../models/Booking.js";
 import Court from "../models/Court.js";
-import { addDays, format } from "date-fns";
+import { addDays, format, startOfToday, endOfMonth, isAfter } from "date-fns";
 
 // 🔧 Helper to generate slots from 6AM to 10PM
 const generateTimeSlots = () => {
@@ -15,42 +15,7 @@ const generateTimeSlots = () => {
   return slots;
 };
 
-// ✅ Get available/booked slots from today for next 7 days
-// export const getSlots = async (req, res) => {
-//   const { courtId } = req.query;
-
-//   if (!courtId) {
-//     return res.status(400).json({ message: "courtId is required" });
-//   }
-
-//   try {
-//     const court = await Court.findById(courtId);
-//     if (!court) return res.status(404).json({ message: "Court not found" });
-
-//     const today = new Date();
-//     const slotsByDate = {};
-
-//     for (let i = 0; i < 7; i++) {
-//       const dateStr = format(addDays(today, i), "yyyy-MM-dd");
-
-//       if (!court.availableTimes.has(dateStr)) {
-//         const slots = generateTimeSlots();
-//         court.availableTimes.set(dateStr, slots);
-//       }
-
-//       slotsByDate[dateStr] = court.availableTimes.get(dateStr);
-//     }
-
-//     court.markModified("availableTimes");
-//     await court.save();
-
-//     res.status(200).json({ slotsByDate });
-//   } catch (err) {
-//     res.status(500).json({ message: "Error fetching slots", error: err.message });
-//   }
-// };
-
-// bookingController.js
+// ✅ Get available/booked slots from today until month end
 export const getSlots = async (req, res) => {
   const { courtId } = req.query;
 
@@ -67,19 +32,21 @@ export const getSlots = async (req, res) => {
       court.availableTimes = new Map(Object.entries(court.availableTimes || {}));
     }
 
-    const today = new Date();
+    const today = startOfToday();
+    const monthEnd = endOfMonth(today);
+    let currentDay = today;
     const slotsByDate = {};
 
-    for (let i = 0; i < 7; i++) {
-      const dateStr = format(addDays(today, i), "yyyy-MM-dd");
+    while (!isAfter(currentDay, monthEnd)) {
+      const dateStr = format(currentDay, "yyyy-MM-dd");
 
       if (!court.availableTimes.has(dateStr)) {
         const slots = generateTimeSlots();
         court.availableTimes.set(dateStr, slots);
       }
 
-      // Always return all slots, including blocked
       slotsByDate[dateStr] = court.availableTimes.get(dateStr) || [];
+      currentDay = addDays(currentDay, 1);
     }
 
     await court.save();
@@ -88,6 +55,7 @@ export const getSlots = async (req, res) => {
     res.status(500).json({ message: "Error fetching slots", error: err.message });
   }
 };
+
 // ✅ Book a slot (only if available)
 export const bookSlot = async (req, res) => {
   const { courtId, bookingDate, start, end } = req.body;
@@ -197,6 +165,8 @@ export const getCourtBookings = async (req, res) => {
     res.status(500).json({ message: "Error fetching court bookings" });
   }
 };
+
+// ✅ Block time slot for court owners
 export const blockTimeSlot = async (req, res) => {
   const { date, start, end } = req.body;
 
@@ -205,7 +175,6 @@ export const blockTimeSlot = async (req, res) => {
   }
 
   try {
-    // Only block slots for courts owned by the logged-in user
     const courts = await Court.find({ owner: req.user._id });
 
     if (!courts.length) {

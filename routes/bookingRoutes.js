@@ -1,34 +1,41 @@
 import express from "express";
 import {
-  bookSlot, // ✅ use this instead of bookCourt
-  getMyBookings,
-  getCourtBookings,
-  cancelBooking,
-  getSlots, // optional: for frontend slot view
-  blockTimeSlot,
+  bookSlot,            
+  getMyBookings,        
+  getCourtBookings,     
+  cancelBooking,        
+  getSlots,          
+  blockTimeSlot,        
 } from "../controllers/bookingController.js";
+
 import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
 // import { checkSubscription } from "../middleware/checkSubscription.js";
+
 const router = express.Router();
 
-// Get available slots for a specific date
-router.get("/slots", protect, getSlots); // Example: /api/bookings/slots?courtId=xxx&date=yyyy-mm-dd
+// ✅ Get available slots (for players to book)
+router.get("/slots", protect, getSlots); 
+// Example: /api/bookings/slots?courtId=xxx&date=yyyy-mm-dd
 
-// Book a slot
-router.post("/book", protect, authorizeRoles("player"), 
-// checkSubscription, 
-bookSlot);
+// ✅ Book a slot
+router.post(
+  "/book",
+  protect,
+  authorizeRoles("player"),
+  // checkSubscription, // Optional: enable if you require active subscription
+  bookSlot
+);
 
-// Get current user's bookings
+// ✅ Get logged-in player's bookings
 router.get("/my-bookings", protect, authorizeRoles("player"), getMyBookings);
 
-// Get all bookings for courts (court owner/admin)
+// ✅ Get all bookings (admin / court_owner)
 router.get("/court-bookings", protect, authorizeRoles("court_owner", "admin"), getCourtBookings);
 
-// Cancel booking (within 30 min)
+// ✅ Cancel booking
 router.delete("/:id/cancel", protect, authorizeRoles("player"), cancelBooking);
 
-// Block a time slot (court owner)
+// ✅ Block a time slot (owner only)
 router.post(
   "/block-slot",
   protect,
