@@ -5,7 +5,8 @@ import {
   registerOwner,
   loginUser,
   logoutUser,
-  getCurrentUser // ✅ Add this
+  getCurrentUser, // ✅ Add this
+  getProfile
 } from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
@@ -24,7 +25,8 @@ router.post('/login', loginUser);
 router.post('/logout', protect, logoutUser);
 
 // ✅ Profile Route (used by PlayerDashboard)
-router.get('/profile', protect, getCurrentUser);
+// router.get('/profile', protect, getCurrentUser);
+router.get("/profile", protect, getProfile);
 
 // ✅ Google Login (social login)
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));

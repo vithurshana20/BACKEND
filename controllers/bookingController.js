@@ -168,41 +168,103 @@ export const getCourtBookings = async (req, res) => {
 
 // ✅ Block time slot for court owners
 export const blockTimeSlot = async (req, res) => {
-  const { date, start, end } = req.body;
-
-  if (!date || !start || !end) {
-    return res.status(400).json({ message: "date, start, and end are required" });
-  }
-
   try {
-    const courts = await Court.find({ owner: req.user._id });
+    const { courtId, date, start, end } = req.body;
 
-    if (!courts.length) {
-      return res.status(404).json({ message: "No courts found for this owner" });
+    if (!courtId || !date || !start || !end) {
+      return res.status(400).json({ message: "courtId, date, start, and end are required" });
     }
 
-    let blockedCount = 0;
-    for (const court of courts) {
-      let slots = court.availableTimes.get(date);
-      if (!slots) {
-        slots = generateTimeSlots();
-        court.availableTimes.set(date, slots);
-      }
-      const slot = slots.find((s) => s.start === start && s.end === end);
-      if (slot && slot.status !== "blocked") {
-        slot.status = "blocked";
-        court.markModified("availableTimes");
-        await court.save();
-        blockedCount++;
-      }
+    const court = await Court.findById(courtId);
+    if (!court) {
+      return res.status(404).json({ message: "Court not found" });
     }
 
-    if (blockedCount === 0) {
-      return res.status(404).json({ message: "Time slot not found or already blocked in all your courts" });
+    // 👤 Check court ownership
+    if (court.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "You are not authorized to block this court's slots" });
     }
 
-    res.status(200).json({ message: `${blockedCount} time slot(s) blocked successfully` });
-  } catch (err) {
-    res.status(500).json({ message: "Error blocking time slot", error: err.message });
+    // 🛠 Ensure availableTimes is a Map
+    if (!(court.availableTimes instanceof Map)) {
+      court.availableTimes = new Map(Object.entries(court.availableTimes || {}));
+    }
+
+    // 🗓 Ensure slot array exists for the date
+    let slots = court.availableTimes.get(date);
+    if (!slots) {
+      slots = generateTimeSlots();
+      court.availableTimes.set(date, slots);
+    }
+
+    const slot = slots.find((s) => s.start === start && s.end === end);
+
+    if (!slot) {
+      return res.status(404).json({ message: "Time slot not found for the specified date" });
+    }
+
+    if (slot.status === "booked") {
+      return res.status(400).json({ message: "This slot is already booked and cannot be blocked" });
+    }
+
+    if (slot.status === "blocked") {
+      return res.status(400).json({ message: "This slot is already blocked" });
+    }
+
+    // ✅ Block the slot
+    slot.status = "blocked";
+
+    // Save the updated slot array back
+    court.availableTimes.set(date, slots);
+
+    // Mark and save
+    court.markModified("availableTimes");
+    await court.save();
+
+    return res.status(200).json({
+      message: "Slot successfully blocked",
+      courtId,
+      date,
+      start,
+      end,
+      updatedStatus: slot.status,
+    });
+  } catch (error) {
+    console.error("Slot block error:", error);
+    res.status(500).json({ message: "Error blocking slot", error: error.message });
+  }
+};
+
+
+
+
+export const getBlockedSlotsByCourt = async (req, res) => {
+  try {
+    const { courtId } = req.params;
+    const court = await Court.findById(courtId);
+
+    if (!court) {
+      return res.status(404).json({ message: "Court not found" });
+    }
+
+    const blockedSlots = [];
+
+    // Loop through availableTimes (Map of date => slots[])
+    for (const [date, slots] of court.availableTimes.entries()) {
+      slots.forEach((slot) => {
+        if (slot.status === "blocked") {
+          blockedSlots.push({
+            date,
+            start: slot.start,
+            end: slot.end,
+          });
+        }
+      });
+    }
+
+    return res.status(200).json({ blockedSlots });
+  } catch (error) {
+    console.error("Error fetching blocked slots:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };

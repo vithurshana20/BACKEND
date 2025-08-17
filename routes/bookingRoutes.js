@@ -5,7 +5,8 @@ import {
   getCourtBookings,     
   cancelBooking,        
   getSlots,          
-  blockTimeSlot,        
+  blockTimeSlot,    
+  getBlockedSlotsByCourt,    
 } from "../controllers/bookingController.js";
 
 import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
@@ -42,5 +43,8 @@ router.post(
   authorizeRoles("court_owner"),
   blockTimeSlot
 );
+
+router.get('/blocks/court/:courtId',protect, getBlockedSlotsByCourt);
+
 
 export default router;

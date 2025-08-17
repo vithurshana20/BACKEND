@@ -1,52 +1,7 @@
-// import stripe from "../utils/stripe.js";
-// import Court from "../models/Court.js";
-// import Owner from "../models/Owner.js"
 
-// export const handleStripeWebhook = async (req, res) => {
-//   const sig = req.headers["stripe-signature"];
-//   let event;
-
-//   try {
-//     event = stripe.webhooks.constructEvent(
-//       req.body,
-//       sig,
-//       process.env.STRIPE_WEBHOOK_SECRET
-//     );
-//   } catch (err) {
-//     return res.status(400).send(`Webhook Error: ${err.message}`);
-//   }
-
-//   // Handle event
-//   if (event.type === "checkout.session.completed") {
-//     const session = event.data.object;
-
-//     const customerId = session.customer;
-//     const subscriptionId = session.subscription;
-
-// const owner = await Owner.findOne({ stripeCustomerId: customerId });
-//     if (!owner) return res.status(404).end();
-
-//     // Set court active and save subscription data
-// const latestCourt = await Court.findOne({ owner: owner._id }).sort({ createdAt: -1 });
-
-//     if (latestCourt) {
-//       const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
-//       latestCourt.subscriptionId = subscription.id;
-//       latestCourt.subscriptionEnd = new Date(subscription.current_period_end * 1000); // Convert from seconds
-//       latestCourt.active = true;
-//       await latestCourt.save();
-//     }
-//   }
-
-//   res.status(200).end();
-// };
-
-
-// controllers/webhookController.js
 import Stripe from "stripe";
 import dotenv from "dotenv";
-import Owner from "../models/Owner.js";
+import User from "../models/User.js";
 
 dotenv.config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -58,38 +13,81 @@ export const handleStripeWebhook = async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error("⚠️ Webhook signature error:", err.message);
+    console.error("Webhook signature error:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   try {
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
+    switch (event.type) {
+      case "invoice.payment_succeeded": {
+        const session = event.data.object;
+        const customerId = session.customer;
+        const subscriptionId = session.subscription;
 
-      // Update your DB: mark subscription active for this email
-      const customerEmail = session.customer_email;
-      await Owner.findOneAndUpdate(
-        { email: customerEmail },
-        {
-          subscriptionStatus: "active",
-          subscriptionId: session.subscription,
-          // Optional: Set expiry date if needed
+        // Find the user by their Stripe customer ID
+        const user = await User.findOne({ stripeCustomerId: customerId });
+
+        if (user) {
+          // Update subscription status
+          user.subscriptionStatus = "active";
+          user.subscriptionId = subscriptionId;
+          await user.save();
+        } else {
+          console.error(`No user found with Stripe customer ID: ${customerId}`);
         }
-      );
-    }
+        break;
+      }
+      case "invoice.payment_failed": {
+        const session = event.data.object;
+        const customerId = session.customer;
 
-    // Handle subscription cancellation
-    if (event.type === "customer.subscription.deleted") {
-      const subscription = event.data.object;
-      const customerId = subscription.customer;
+        // Find the user by their Stripe customer ID
+        const user = await User.findOne({ stripeCustomerId: customerId });
 
-      const customer = await stripe.customers.retrieve(customerId);
-      const email = customer.email;
+        if (user) {
+          // Update subscription status
+          user.subscriptionStatus = "inactive";
+          await user.save();
+        } else {
+          console.error(`No user found with Stripe customer ID: ${customerId}`);
+        }
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object;
+        const customerId = subscription.customer;
 
-      await Owner.findOneAndUpdate(
-        { email: email },
-        { subscriptionStatus: "inactive" }
-      );
+        // Find the user by their Stripe customer ID
+        const user = await User.findOne({ stripeCustomerId: customerId });
+
+        if (user) {
+          user.subscriptionStatus = "inactive";
+          user.subscriptionId = null; // Clear the subscription ID
+          await user.save();
+        } else {
+          console.error(`No user found with Stripe customer ID: ${customerId}`);
+        }
+        break;
+      }
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const userId = session.metadata.userId;
+        const subscriptionId = session.subscription;
+
+        const user = await User.findById(userId);
+
+        if (user) {
+          user.subscriptionStatus = "active";
+          user.subscriptionId = subscriptionId;
+          user.stripeCustomerId = session.customer;
+          await user.save();
+        } else {
+          console.error(`No user found with ID: ${userId}`);
+        }
+        break;
+      }
+      default:
+        console.log(`Unhandled event type ${event.type}`);
     }
 
     res.status(200).json({ received: true });

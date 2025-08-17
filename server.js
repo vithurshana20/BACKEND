@@ -26,9 +26,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ⚠️ Stripe Webhook - raw parser (must come BEFORE express.json)
-app.use("/api/webhook", bodyParser.raw({ type: "application/json" }));
 
 //  Basic Middlewares
+app.use('/api', webhookRoutes);
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
@@ -53,9 +53,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/admin', adminRoutes);
 // app.use('/api/users', userRoutes);
 // app.use("/api/payments", paymentRoutes);
-// app.use("/api/webhook", webhookRoutes);
 app.use('/api/subscribe', subscriptionRoutes); // ✅ Stripe subscription endpoint
-app.use('/api/webhook', webhookRoutes);  
 
 
 //  Basic Health Check

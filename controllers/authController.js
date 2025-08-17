@@ -1,4 +1,4 @@
-import User from '../models/Player.js';
+import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import Booking from '../models/Booking.js';
 
@@ -23,7 +23,7 @@ export const registerPlayer = async (req, res) => {
 
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ message: "Player already exists" });
+      return res.status(400).json({ message: "User with this email already exists" });
     }
 
     const player = await User.create({
@@ -32,7 +32,6 @@ export const registerPlayer = async (req, res) => {
       phone,
       password,
       role: "player",
-      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     res.status(201).json({ message: "Player registered successfully." });
@@ -53,7 +52,7 @@ export const registerOwner = async (req, res) => {
 
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ message: "Owner already exists" });
+      return res.status(400).json({ message: "User with this email already exists" });
     }
 
     const owner = await User.create({
@@ -62,7 +61,6 @@ export const registerOwner = async (req, res) => {
       phone,
       password,
       role: "court_owner",
-      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     res.status(201).json({ message: "Court Owner registered successfully." });
@@ -71,13 +69,6 @@ export const registerOwner = async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 };
-
-
-
-
-
-
-
 
 //  Login User Controller 
 export const loginUser = async (req, res) => {
@@ -116,16 +107,34 @@ export const loginUser = async (req, res) => {
 //  Get current logged-in user
 export const getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    res.json(user);
+  const user = await User.findById(req.user.id).select('-password');
+if (!user) {
+  return res.status(404).json({ message: 'User not found' });
+}
+
+// 👇 Include subscription info in response
+res.json({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  subscriptionStatus: user.subscriptionStatus || "inactive",
+  subscriptionActive: user.subscriptionStatus === "active", // Optional boolean for frontend
+});
+
+    // Send extra field `subscriptionActive` for court_owner
+    const subscriptionActive = user.role === 'court_owner' && user.subscriptionStatus === 'active';
+
+    res.json({
+      ...user.toObject(),
+      subscriptionActive,
+    });
   } catch (error) {
     console.error("Get Current User Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 };
+
 
 //  Get all users (Admin only)
 export const getAllUsers = async (req, res) => {
@@ -263,5 +272,29 @@ export const getAllPayments = async (req, res) => {
 //     res.status(500).json({ message: "Server Error" });
 //   }
 // };  
+
+
+// Unified profile route using User model
+export const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      subscriptionStatus: user.subscriptionStatus || "inactive",
+      subscriptionActive: user.subscriptionStatus === "active",
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching profile", details: err.message });
+  }
+};
+
 
 

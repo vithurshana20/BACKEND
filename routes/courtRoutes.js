@@ -11,7 +11,8 @@ import {
   getAllCourtsForApproval,
   approveCourt,
   rejectCourt,
- 
+   updateCourt,
+  deleteCourt,
 } from "../controllers/courtController.js";
 // import { checkSubscription } from "../middleware/checkSubscription.js";
 
@@ -78,6 +79,7 @@ router.put(
   rejectCourt
 );
 
-
+router.put('/update/:courtId', protect, upload.array('images'), updateCourt);
+router.delete('/delete/:courtId', protect, deleteCourt);
 
 export default router;

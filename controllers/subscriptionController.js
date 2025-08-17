@@ -1,87 +1,12 @@
-// import stripe from "../utils/stripe.js";
-// import Court from "../models/Court.js";
-// import Owner from "../models/Owner.js";
-
-// // Court owner subscription: ₹499/month
-// const PLAN_PRICE_ID = "your_stripe_price_id_here"; // Create in Stripe dashboard
-
-// export const createCourtSubscription = async (req, res) => {
-//   try {
-//   const owner = await Owner.findById(req.user._id);
-// if (!owner) return res.status(404).json({ message: "Owner not found" });
-
-// // Create Stripe customer
-// if (!owner.stripeCustomerId) {
-//   const customer = await stripe.customers.create({
-//     email: owner.email,
-//     name: owner.name,
-//   });
-//   owner.stripeCustomerId = customer.id;
-//   await owner.save();
-// }
-
-
-//     // Create subscription session
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "subscription",
-//       customer: user.stripeCustomerId,
-//       line_items: [
-//         {
-//           price: PLAN_PRICE_ID,
-//           quantity: 1,
-//         },
-//       ],
-//       success_url: `${process.env.FRONTEND_URL}/owner/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-//       cancel_url: `${process.env.FRONTEND_URL}/owner/payment-cancelled`,
-//     });
-
-//     res.status(200).json({ url: session.url });
-//   } catch (err) {
-//     res.status(500).json({ message: "Failed to create subscription", error: err.message });
-//   }
-// };
-
-// controllers/subscriptionController.js
-// import Stripe from "stripe";
-// import dotenv from "dotenv";
-// dotenv.config();
-
-// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// // Create Stripe subscription checkout session
-// export const createSubscriptionSession = async (req, res) => {
-//   try {
-//     const { planType, email } = req.body;
-
-//     const priceId = planType === 'monthly'
-//       ? 'price_1Rk194QrTfa5cfnq4GOQSpLg'  // Replace with your Stripe price ID
-//       : 'price_1Rk1CVQrTfa5cfnqFx3xec1K';
-
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ['card'],
-//       mode: 'subscription',
-//       line_items: [{ price: priceId, quantity: 1 }],
-//       customer_email: email,
-//       success_url: `${process.env.FRONTEND_URL}/register-court?session_id={CHECKOUT_SESSION_ID}`,
-//       cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
-//       // success_url: `${process.env.CLIENT_URL}/owner-dashboard?payment_status=success&session_id={CHECKOUT_SESSION_ID}`,
-//       // cancel_url: `${process.env.CLIENT_URL}/owner-dashboard?payment_status=cancelled`,
-//     });
-
-//     res.status(200).json({ url: session.url });
-//   } catch (error) {
-//     console.error(' Stripe Session Error:', error);
-//     res.status(500).json({ error: "Unable to create subscription session" });
-//   }
-// };
 
 import Stripe from "stripe";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+
 // Court model is not directly used for initial subscription creation in this flow,
 // but keep it imported if used elsewhere in the file or for type hinting.
-import Court from '../models/Court.js'; 
-import User from '../models/Owner.js'; // Ensure this path is correct for your User/Owner model
+import Court from '../models/Court.js';
+import User from '../models/User.js';
 
 dotenv.config();
 
@@ -90,26 +15,26 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Helper function to create or retrieve a Stripe Customer for the owner
 // This customer will hold all subscriptions for this owner.
 const createOrGetStripeCustomerForOwner = async (ownerId, ownerEmail, ownerName) => {
-  let owner = await User.findById(ownerId);
-  if (!owner) {
-    throw new Error('Owner not found for subscription process.');
+  let user = await User.findById(ownerId);
+  if (!user) {
+    throw new Error('User not found for subscription process.');
   }
 
   // If owner already has a Stripe Customer ID, use it
-  if (owner.stripeCustomerId) {
-    return { customerId: owner.stripeCustomerId };
+  if (user.stripeCustomerId) {
+    return { customerId: user.stripeCustomerId };
   } else {
     // Otherwise, create a new Stripe Customer
     const customer = await stripe.customers.create({
       email: ownerEmail, // Use the owner's email for the customer record
       name: ownerName,
       metadata: {
-        ownerId: ownerId.toString() // Link the Stripe customer to your internal owner ID
+        userId: ownerId.toString() // Link the Stripe customer to your internal owner ID
       }
     });
     // Save the new Stripe Customer ID to your owner model
-    owner.stripeCustomerId = customer.id;
-    await owner.save();
+    user.stripeCustomerId = customer.id;
+    await user.save();
     return { customerId: customer.id };
   }
 };
@@ -133,9 +58,9 @@ export const createSubscriptionSession = async (req, res) => {
       return res.status(400).json({ error: 'Missing plan type for subscription (e.g., "monthly", "yearly").' });
     }
 
-    const owner = await User.findById(ownerId);
-    if (!owner) {
-        return res.status(404).json({ error: 'Owner details not found in the database.' });
+    const user = await User.findById(ownerId);
+    if (!user) {
+        return res.status(404).json({ error: 'User details not found in the database.' });
     }
 
     let priceId; // This will be your Stripe Price ID for the selected plan
@@ -158,30 +83,28 @@ export const createSubscriptionSession = async (req, res) => {
     // This customer will manage all subscriptions for this owner.
     const { customerId } = await createOrGetStripeCustomerForOwner(
       ownerId,
-      owner.email,
-      owner.name
+      user.email,
+      user.name
     );
 
     // Create the Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
-      customer: customerId, // Use the customer ID specifically tied to this owner
-      
-      // Pass crucial metadata to the session. This data will be available in Stripe webhooks
-      // AND when you retrieve the session on the backend after redirect.
-      metadata: {
-        ownerId: ownerId.toString(), // Convert ObjectId to string for Stripe metadata
-        planType: planType,
-        // No courtId here, as the court doesn't exist yet.
-      },
+ const session = await stripe.checkout.sessions.create({
+  mode: 'subscription',
+line_items: [
+  {
+    price: priceId, // This should be a valid recurring price ID like 'price_1Rk194QrTfa5cfnq4GOQSpLg'
+    quantity: 1,
+  },
+],
+  success_url: `http://localhost:5173/owner/stripe-success?session_id={CHECKOUT_SESSION_ID}`,
+cancel_url: `http://localhost:5173/owner/subscription?payment_status=cancelled`,
+customer: customerId,
+  metadata: {
+userId: user._id.toString(),
+    planType: planType            // 'monthly' or 'yearly'
+  }
+});
 
-      // Construct success and cancel URLs.
-      // We are redirecting back to the owner-dashboard, and will check for session_id there.
-      success_url: `${process.env.FRONTEND_URL}/owner-dashboard?payment_status=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/owner-dashboard?payment_status=cancelled`,
-    });
 
     res.status(200).json({ url: session.url });
   } catch (error) {
@@ -189,3 +112,52 @@ export const createSubscriptionSession = async (req, res) => {
     res.status(500).json({ error: error.message || "Unable to create subscription session. Please check server logs for details." });
   }
 };
+
+
+
+
+export const verifySession = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+
+    console.log("🔍 Session ID received from frontend:", sessionId);
+
+    // Check if sessionId is missing
+    if (!sessionId) {
+      return res.status(400).json({ error: "Missing session ID" });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    console.log("✅ Stripe session:", session);
+
+    const customerId = session.customer;
+    const subscriptionId = session.subscription;
+
+    const user = await User.findOneAndUpdate(
+      { stripeCustomerId: customerId },
+      {
+        subscriptionStatus: "active",
+        stripeSubscriptionId: subscriptionId,
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      console.log("❌ No user found for customer ID:", customerId);
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    return res.json({ user, token });
+
+  } catch (error) {
+    console.error("❌ Stripe verification failed:", error);
+    return res.status(500).json({ error: "Verification failed" });
+  }
+};
+
+
+
